@@ -1,6 +1,6 @@
 ﻿/*!
- * Validator v0.11.6 for Bootstrap 3, by @1000hz
- * Copyright 2016 Cina Saffary
+ * Validator v0.11.9 for Bootstrap 3, by @1000hz
+ * Copyright 2017 Cina Saffary
  * Licensed under http://opensource.org/licenses/MIT
  *
  * https://github.com/1000hz/bootstrap-validator
@@ -15,6 +15,7 @@
   function getValue($el) {
     return $el.is('[type="checkbox"]') ? $el.prop('checked')                                     :
            $el.is('[type="radio"]')    ? !!$('[name="' + $el.attr('name') + '"]:checked').length :
+           $el.is('select[multiple]')  ? ($el.val() || []).length                                :
                                          $el.val()
   }
 
@@ -133,20 +134,22 @@
 
     this.$element.find('[data-match]').each(function () {
       var $this  = $(this)
-      var target = $this.data('match')
+      var target = $this.attr('data-match')
 
       $(target).on('input.bs.validator', function (e) {
         getValue($this) && $this.trigger('input.bs.validator')
       })
     })
 
-    this.$inputs.filter(function () { return getValue($(this)) }).trigger('focusout')
+    // run validators for fields with values, but don't clobber server-side errors
+    this.$inputs.filter(function () {
+      return getValue($(this)) && !$(this).closest('.has-error').length
+    }).trigger('focusout')
 
     this.$element.attr('novalidate', true) // disable automatic native validation
-    this.toggleSubmit()
   }
 
-  Validator.VERSION = '0.11.5'
+  Validator.VERSION = '0.11.9'
 
   Validator.INPUT_SELECTOR = ':input:not([type="hidden"], [type="submit"], [type="reset"], button)'
 
@@ -176,19 +179,25 @@
       }
     },
     'match': function ($el) {
-      var target = $el.data('match')
+      var target = $el.attr('data-match')
       return $el.val() !== $(target).val() && Validator.DEFAULTS.errors.match
     },
     'minlength': function ($el) {
-      var minlength = $el.data('minlength')
+      var minlength = $el.attr('data-minlength')
       return $el.val().length < minlength && Validator.DEFAULTS.errors.minlength
     }
   }
 
   Validator.prototype.update = function () {
+    var self = this
+
     this.$inputs = this.$element.find(Validator.INPUT_SELECTOR)
       .add(this.$element.find('[data-validate="true"]'))
-      .not(this.$element.find('[data-validate="false"]'))
+      .not(this.$element.find('[data-validate="false"]')
+        .each(function () { self.clearErrors($(this)) })
+      )
+
+    this.toggleSubmit()
 
     return this
   }
@@ -208,7 +217,6 @@
   Validator.prototype.validateInput = function ($el, deferErrors) {
     var value      = getValue($el)
     var prevErrors = $el.data('bs.validator.errors')
-    var errors
 
     if ($el.is('[type="radio"]')) $el = this.$element.find('input[name="' + $el.attr('name') + '"]')
 
@@ -248,22 +256,22 @@
     $el.data('bs.validator.deferred', deferred)
 
     function getValidatorSpecificError(key) {
-      return $el.data(key + '-error')
+      return $el.attr('data-' + key + '-error')
     }
 
     function getValidityStateError() {
         var validity = $el[0].validity
-        return validity.valueMissing ? $el.data('required-error') //The first display "required" error message
-             : validity.typeMismatch ? $el.data('type-error')
-             : validity.patternMismatch ? $el.data('pattern-error')
-             : validity.stepMismatch ? $el.data('step-error')
-             : validity.rangeOverflow ? $el.data('max-error')
-             : validity.rangeUnderflow ? $el.data('min-error')
+        return validity.valueMissing ? $el.attr('data-required-error') //The first display "required" error message
+             : validity.typeMismatch ? $el.attr('data-type-error')
+             : validity.patternMismatch ? $el.attr('data-pattern-error')
+             : validity.stepMismatch ? $el.attr('data-step-error')
+             : validity.rangeOverflow ? $el.attr('data-max-error')
+             : validity.rangeUnderflow ? $el.attr('data-min-error')
              : null
     }
 
     function getGenericError() {
-      return $el.data('error')
+      return $el.attr('data-error')
     }
 
     function getErrorMessage(key) {
@@ -276,17 +284,17 @@
         var error = validator.call(this, $el);
         var val = getValue($el);
 
-        if (($el.data(key) || key == 'native') && error) { //bug fixed: When the input element is empty, the information provided by the "setCustomValidity" method does not display.
+        if (($el.attr('data-' + key) || key == 'native') && error) { //bug fixed: When the input element is empty, the information provided by the "setCustomValidity" method does not display.
          error = getErrorMessage(key) || error
         !~errors.indexOf(error) && errors.push(error)
       }
     }, this))
 
-    if (!errors.length && getValue($el) && $el.data('remote')) {
+    if (!errors.length && getValue($el) && $el.attr('data-remote')) {
       this.defer($el, function () {
         var data = {}
         data[$el.attr('name')] = getValue($el)
-        $.get($el.data('remote'), data)
+        $.get($el.attr('data-remote'), data)
           .fail(function (jqXHR, textStatus, error) { errors.push(getErrorMessage('remote') || error) })
           .always(function () { deferred.resolve(errors)})
       })
@@ -436,6 +444,7 @@
     this.validators = null
     this.$element   = null
     this.$btn       = null
+    this.$inputs    = null
 
     return this
   }
