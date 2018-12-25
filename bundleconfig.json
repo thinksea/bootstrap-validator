@@ -1,0 +1,8 @@
+[
+  {
+    "outputFileName": "dist/validator.min.js",
+    "inputFiles": [
+      "dist/validator.js"
+    ]
+  }
+]

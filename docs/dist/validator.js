@@ -1,6 +1,6 @@
-/*!
- * Validator v0.11.5 for Bootstrap 3, by @1000hz
- * Copyright 2016 Cina Saffary
+﻿/*!
+ * Validator v0.11.9.2 for Bootstrap 3, by @1000hz
+ * Copyright 2017 Cina Saffary
  * Licensed under http://opensource.org/licenses/MIT
  *
  * https://github.com/1000hz/bootstrap-validator
@@ -15,6 +15,7 @@
   function getValue($el) {
     return $el.is('[type="checkbox"]') ? $el.prop('checked')                                     :
            $el.is('[type="radio"]')    ? !!$('[name="' + $el.attr('name') + '"]:checked').length :
+           $el.is('select[multiple]')  ? ($el.val() || []).length                                :
                                          $el.val()
   }
 
@@ -29,25 +30,127 @@
     this.update()
 
     this.$element.on('input.bs.validator change.bs.validator focusout.bs.validator', $.proxy(this.onInput, this))
+    //#region Support IE8,IE9
+      var elem = document.createElement("form");
+      if (!elem.checkValidity) { //If the browser does not support HTML5, the extension method is used to verify the form data.
+
+        var _self = this;
+
+        /**
+         * @param {JQuery object} $el HTML element.
+         * @param {String} error Error message.
+         */
+        var html5_setCustomValidity = function ($el, error) {
+            var obj = $el[0];
+            if (error === null || error === "") {
+                obj.validationMessage = "";
+            }
+            else {
+                obj.validationMessage = error;
+            }
+        }
+
+        /**
+         * Validate input element.
+         * @param {JQuery object} $el HTML element.
+         */
+        var html5_checkValidity = function ($el) {
+            var ele = $el[0];
+            if ($el.attr("required")) {
+                if ($el.val().length === 0) {
+                    ele.validity.valueMissing = true;
+                }
+                else {
+                    ele.validity.valueMissing = false;
+                }
+            }
+            if ($el.attr("pattern")) {
+                var reg = new RegExp($el.attr("pattern"), 'ig');
+                if (!reg.test($el.val())) {
+                    ele.validity.patternMismatch = true;
+                }
+                else {
+                    ele.validity.patternMismatch = false;
+                }
+            }
+            var validity = ele.validity;
+            validity.valid = !(validity.typeMismatch
+                || validity.patternMismatch
+                || validity.stepMismatch
+                || validity.rangeOverflow
+                || validity.rangeUnderflow
+                || validity.valueMissing
+                || ele.validationMessage);
+
+            return validity.valid;
+        }
+
+        /**
+         * Validate all input element in the form.
+         * @param {JQuery object} $form HTML form element.
+         */
+        var html5_checkFormValidity = function ($form) {
+            var allValid = true;
+            _self.$inputs.each(function () {
+                var ele = this;
+                html5_checkValidity($(this));
+                if (ele.validity.valid !== true) {
+                    allValid = false;
+                }
+            });
+
+            return allValid;
+        }
+
+        //Initialization form validation, so that it supports the HTML5 form validation criteria.
+        var supportHtml5Validity = function () {
+            _self.$inputs.each(function () { //Init input element.
+                var ele = this;
+                if (typeof (ele.validity) === "undefined") { // Add the "validity" data structure to the input element.
+                    ele.validity = {};
+                }
+                ele.checkValidity = function () { // Add the "checkValidity" method to the input element.
+                    return html5_checkValidity($(this));
+                }
+                ele.setCustomValidity = function (error) { // Add the "setCustomValidity" method to the input element.
+                    html5_setCustomValidity($(this), error);
+                }
+            });
+            _self.$element.each(function () { //Init form element.
+                this.checkValidity = function () { // Add the "checkValidity" method to the form element.
+                    return html5_checkFormValidity($(this));
+                }
+            });
+        }
+
+        supportHtml5Validity();
+        if (!$.support.leadingWhitespace) {//if IE 6-8
+            _self.$inputs.on("propertychange", $.proxy(this.onInput, this));
+        }
+    }
+
+    //#endregion
     this.$element.on('submit.bs.validator', $.proxy(this.onSubmit, this))
     this.$element.on('reset.bs.validator', $.proxy(this.reset, this))
 
     this.$element.find('[data-match]').each(function () {
       var $this  = $(this)
-      var target = $this.data('match')
+      var target = $this.attr('data-match')
 
       $(target).on('input.bs.validator', function (e) {
         getValue($this) && $this.trigger('input.bs.validator')
       })
     })
 
-    this.$inputs.filter(function () { return getValue($(this)) }).trigger('focusout')
+    // run validators for fields with values, but don't clobber server-side errors
+    this.$inputs.filter(function () {
+      return getValue($(this)) && !$(this).closest('.has-error').length
+    }).trigger('focusout')
 
     this.$element.attr('novalidate', true) // disable automatic native validation
-    this.toggleSubmit()
   }
 
-  Validator.VERSION = '0.11.5'
+  Validator.VERSION = '0.11.9'
 
   Validator.INPUT_SELECTOR = ':input:not([type="hidden"], [type="submit"], [type="reset"], button)'
 
@@ -77,19 +180,25 @@
       }
     },
     'match': function ($el) {
-      var target = $el.data('match')
+      var target = $el.attr('data-match')
       return $el.val() !== $(target).val() && Validator.DEFAULTS.errors.match
     },
     'minlength': function ($el) {
-      var minlength = $el.data('minlength')
+      var minlength = $el.attr('data-minlength')
       return $el.val().length < minlength && Validator.DEFAULTS.errors.minlength
     }
   }
 
   Validator.prototype.update = function () {
+    var self = this
+
     this.$inputs = this.$element.find(Validator.INPUT_SELECTOR)
       .add(this.$element.find('[data-validate="true"]'))
-      .not(this.$element.find('[data-validate="false"]'))
+      .not(this.$element.find('[data-validate="false"]')
+        .each(function () { self.clearErrors($(this)) })
+      )
+
+    this.toggleSubmit()
 
     return this
   }
@@ -109,7 +218,6 @@
   Validator.prototype.validateInput = function ($el, deferErrors) {
     var value      = getValue($el)
     var prevErrors = $el.data('bs.validator.errors')
-    var errors
 
     if ($el.is('[type="radio"]')) $el = this.$element.find('input[name="' + $el.attr('name') + '"]')
 
@@ -149,22 +257,22 @@
     $el.data('bs.validator.deferred', deferred)
 
     function getValidatorSpecificError(key) {
-      return $el.data(key + '-error')
+      return $el.attr('data-' + key + '-error')
     }
 
     function getValidityStateError() {
-      var validity = $el[0].validity
-      return validity.typeMismatch    ? $el.data('type-error')
-           : validity.patternMismatch ? $el.data('pattern-error')
-           : validity.stepMismatch    ? $el.data('step-error')
-           : validity.rangeOverflow   ? $el.data('max-error')
-           : validity.rangeUnderflow  ? $el.data('min-error')
-           : validity.valueMissing    ? $el.data('required-error')
-           :                            null
+        var validity = $el[0].validity
+        return validity.valueMissing ? $el.attr('data-required-error') //The first display "required" error message
+             : validity.typeMismatch ? $el.attr('data-type-error')
+             : validity.patternMismatch ? $el.attr('data-pattern-error')
+             : validity.stepMismatch ? $el.attr('data-step-error')
+             : validity.rangeOverflow ? $el.attr('data-max-error')
+             : validity.rangeUnderflow ? $el.attr('data-min-error')
+             : null
     }
 
     function getGenericError() {
-      return $el.data('error')
+      return $el.attr('data-error')
     }
 
     function getErrorMessage(key) {
@@ -174,20 +282,20 @@
     }
 
     $.each(this.validators, $.proxy(function (key, validator) {
-      var error = null
-      if ((getValue($el) || $el.attr('required')) &&
-          ($el.data(key) || key == 'native') &&
-          (error = validator.call(this, $el))) {
+        var error = validator.call(this, $el);
+        var val = getValue($el);
+
+        if (($el.attr('data-' + key) || key == 'native') && error) { //bug fixed: When the input element is empty, the information provided by the "setCustomValidity" method does not display.
          error = getErrorMessage(key) || error
         !~errors.indexOf(error) && errors.push(error)
       }
     }, this))
 
-    if (!errors.length && getValue($el) && $el.data('remote')) {
+    if (!errors.length && getValue($el) && $el.attr('data-remote')) {
       this.defer($el, function () {
         var data = {}
         data[$el.attr('name')] = getValue($el)
-        $.get($el.data('remote'), data)
+        $.get($el.attr('data-remote'), data)
           .fail(function (jqXHR, textStatus, error) { errors.push(getErrorMessage('remote') || error) })
           .always(function () { deferred.resolve(errors)})
       })
@@ -212,7 +320,7 @@
   Validator.prototype.focusError = function () {
     if (!this.options.focus) return
 
-    var $input = this.$element.find(".has-error:first :input")
+    var $input = this.$element.find(".has-error :input:first")
     if ($input.length === 0) return
 
     $('html, body').animate({scrollTop: $input.offset().top - Validator.FOCUS_OFFSET}, 250)
@@ -337,6 +445,7 @@
     this.validators = null
     this.$element   = null
     this.$btn       = null
+    this.$inputs    = null
 
     return this
   }

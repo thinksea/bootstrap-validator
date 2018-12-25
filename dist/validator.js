@@ -1,5 +1,5 @@
 ﻿/*!
- * Validator v0.11.9 for Bootstrap 3, by @1000hz
+ * Validator v0.11.9.2 for Bootstrap 3, by @1000hz
  * Copyright 2017 Cina Saffary
  * Licensed under http://opensource.org/licenses/MIT
  *
@@ -31,7 +31,8 @@
 
     this.$element.on('input.bs.validator change.bs.validator focusout.bs.validator', $.proxy(this.onInput, this))
     //#region Support IE8,IE9
-    if (!window.applicationCache) { //If the browser does not support HTML5, the extension method is used to verify the form data.
+      var elem = document.createElement("form");
+      if (!elem.checkValidity) { //If the browser does not support HTML5, the extension method is used to verify the form data.
 
         var _self = this;
 
@@ -319,7 +320,7 @@
   Validator.prototype.focusError = function () {
     if (!this.options.focus) return
 
-    var $input = this.$element.find(".has-error:first :input")
+    var $input = this.$element.find(".has-error :input:first")
     if ($input.length === 0) return
 
     $('html, body').animate({scrollTop: $input.offset().top - Validator.FOCUS_OFFSET}, 250)
